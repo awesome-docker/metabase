@@ -13,7 +13,7 @@
   "The maximum character length for a stored `FieldValues` entry."
   100)
 
-(def ^:const ^Integer total-max-length
+(def ^:private ^:const ^Integer total-max-length
   "Maximum total length for a `FieldValues` entry (combined length of all values for the field)."
   (* low-cardinality-threshold entry-max-length))
 

@@ -5,16 +5,14 @@
             [metabase
              [db :as mdb]
              [driver :as driver]
-             [sync-database :refer :all]
+             [sync :refer :all]
              [util :as u]]
             [metabase.driver.generic-sql :as sql]
             [metabase.models
              [database :refer [Database]]
              [field :refer [Field]]
              [field-values :as field-values :refer [FieldValues]]
-             [raw-table :refer [RawTable]]
              [table :refer [Table]]]
-            metabase.sync-database.analyze
             [metabase.test
              [data :refer :all]
              [util :as tu]]
@@ -62,8 +60,7 @@
 (extend SyncTestDriver
   driver/IDriver
   (merge driver/IDriverDefaultsMixin
-         {:analyze-table         (constantly nil)
-          :describe-database     describe-database
+         {:describe-database     describe-database
           :describe-table        describe-table
           :describe-table-fks    describe-table-fks
           :features              (constantly #{:foreign-keys})
@@ -83,7 +80,7 @@
 (def ^:private ^:const table-defaults
   {:id                      true
    :db_id                   true
-   :raw_table_id            true
+   :raw_table_id            false
    :schema                  nil
    :description             nil
    :caveats                 nil
@@ -100,7 +97,7 @@
 (def ^:private ^:const field-defaults
   {:id                 true
    :table_id           true
-   :raw_column_id      true
+   :raw_column_id      false
    :description        nil
    :caveats            nil
    :points_of_interest nil
@@ -180,12 +177,10 @@
                                  :name         "title"
                                  :display_name "Title"
                                  :base_type    :type/Text})]})
-  (tt/with-temp* [Database [db        {:engine :sync-test}]
-                  RawTable [raw-table {:database_id (u/get-id db), :name "movie", :schema "default"}]
-                  Table    [table     {:raw_table_id (u/get-id raw-table)
-                                       :name         "movie"
-                                       :schema       "default"
-                                       :db_id        (u/get-id db)}]]
+  (tt/with-temp* [Database [db    {:engine :sync-test}]
+                  Table    [table {:name   "movie"
+                                   :schema "default"
+                                   :db_id  (u/get-id db)}]]
     (sync-table! table)
     (table-details (Table (:id table)))))
 
@@ -201,8 +196,7 @@
 (extend ConcurrentSyncTestDriver
   driver/IDriver
   (merge driver/IDriverDefaultsMixin
-         {:analyze-table     (constantly nil)
-          :describe-database (fn [_ _]
+         {:describe-database (fn [_ _]
                                (swap! sync-count inc)
                                (Thread/sleep 1000)
                                {:tables #{}})
@@ -232,10 +226,9 @@
 (expect
   [[1 2 3]
    [1 2 3]]
-  (tt/with-temp* [Database [db    {:engine :sync-test}]
-                  RawTable [table {:database_id (u/get-id db), :name "movie", :schema "default"}]]
+  (tt/with-temp* [Database [db {:engine :sync-test}]]
     (sync-database! db)
-    (let [table-id (db/select-one-id Table, :raw_table_id (:id table))
+    (let [table-id (db/select-one-id Table, :schema "default", :name "movie")
           field-id (db/select-one-id Field, :table_id table-id, :name "title")]
       (tt/with-temp FieldValues [_ {:field_id field-id
                                     :values   "[1,2,3]"}]
@@ -353,7 +346,7 @@
             ;; create the `blueberries_consumed` table and insert a 100 values
             (exec! ["CREATE TABLE blueberries_consumed (num INTEGER NOT NULL);"
                     (insert-range-sql (range 100))])
-            (sync-database! db, :full-sync? true)
+            (sync-database! db {:full-sync? true})
             (let [table-id (db/select-one-id Table :db_id (u/get-id db))
                   field-id (db/select-one-id Field :table_id table-id)]
               ;; field values should exist...
