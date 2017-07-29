@@ -3,6 +3,7 @@
   (:require [clojure.math.numeric-tower :as math]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [medley.core :as m]
             [metabase
              [driver :as driver]
              [events :as events]
@@ -26,6 +27,7 @@
 
 ;; This looks something like {:sync #{1 2}, :cache #{2 3}} when populated.
 ;; Key is a type of sync operation, e.g. `:sync` or `:cache`; vals are sets of DB IDs undergoing that operation.
+;; TODO - as @salsakran mentioned it would be nice to do this via the DB so we could better support multi-instance setups in the future
 (defonce ^:private operation->db-ids (atom {}))
 
 (defn with-duplicate-ops-prevented
@@ -42,10 +44,10 @@
       (try
         ;; mark this database as currently syncing so we can prevent duplicate sync attempts (#2337)
         (swap! operation->db-ids update operation #(conj (or % #{}) (u/get-id database-or-id)))
-        (println "Sync operations in flight:" @operation->db-ids) ; NOCOMMIT
+        (log/debug "Sync operations in flight:" (m/filter-vals seq @operation->db-ids))
         ;; do our work
         (f)
-        ;; always cleanup our tracking when we are through
+        ;; always take the ID out of the set when we are through
         (finally
           (swap! operation->db-ids update operation #(disj % (u/get-id database-or-id))))))))
 
@@ -83,7 +85,7 @@
     (let [start-time (System/nanoTime)]
       (log/info (u/format-color 'magenta "STARTING: %s" message))
       (f)
-      (log/info (u/format-color 'magenta "FINSISHED: %s (%s)" message (u/format-nanoseconds (- (System/nanoTime) start-time)))))))
+      (log/info (u/format-color 'magenta "FINISHED: %s (%s)" message (u/format-nanoseconds (- (System/nanoTime) start-time)))))))
 
 
 (defn- with-db-logging-disabled
@@ -91,8 +93,8 @@
   {:style/indent 0}
   [f]
   (fn []
-    (binding [qpi/*disable-qp-logging*  true
-              db/*disable-db-logging* true]
+    (binding [qpi/*disable-qp-logging* true
+              db/*disable-db-logging*  true]
       (f))))
 
 (defn- sync-in-context
@@ -219,13 +221,13 @@
 
 (extend-protocol INameForLogging
   i/DatabaseInstance
-  (name-for-logging [{database-name :name, engine :engine}]
-    (format "%s Database '%s'" (name engine) database-name))
+  (name-for-logging [{database-name :name, id :id, engine :engine,}]
+    (format "%s Database %d '%s'" (name engine) id database-name))
 
   i/TableInstance
-  (name-for-logging [{schema :schema, table-name :name}]
-    (format "Table '%s'" (str (when (seq schema) (str schema ".")) table-name)))
+  (name-for-logging [{schema :schema, id :id, table-name :name}]
+    (format "Table %d '%s'" id (str (when (seq schema) (str schema ".")) table-name)))
 
   i/FieldInstance
-  (name-for-logging [{field-name :name}]
-    (format "Field '%s'" field-name)))
+  (name-for-logging [{field-name :name, id :id}]
+    (format "Field %d '%s'" id field-name)))

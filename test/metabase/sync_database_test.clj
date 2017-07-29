@@ -187,7 +187,7 @@
 
 ;; test that we prevent running simultaneous syncs on the same database
 
-(defonce ^:private sync-count (atom 0))
+(defonce ^:private calls-to-describe-database (atom 0))
 
 (defrecord ConcurrentSyncTestDriver []
   clojure.lang.Named
@@ -197,7 +197,7 @@
   driver/IDriver
   (merge driver/IDriverDefaultsMixin
          {:describe-database (fn [_ _]
-                               (swap! sync-count inc)
+                               (swap! calls-to-describe-database inc)
                                (Thread/sleep 1000)
                                {:tables #{}})
           :describe-table    (constantly nil)
@@ -207,25 +207,31 @@
 
 ;; only one sync should be going on at a time
 (expect
-  1
-  (tt/with-temp* [Database [db {:engine :concurrent-sync-test}]]
-    (reset! sync-count 0)
-    ;; start a sync processes in the background. It should take 1000 ms to finish
-    (future (sync-database! db))
-    ;; wait 200 ms to make sure everything is going
-    (Thread/sleep 200)
-    ;; Start another in the background. Nothing should happen here because the first is already running
-    (future (sync-database! db))
-    ;; Start another in the foreground. Again, nothing should happen here because the original should still be running
-    (sync-database! db)
-    ;; Check the number of syncs that took place. Should be 1 (just the first)
-    @sync-count))
+ ;; describe-database gets called twice during a single sync process, once for syncing tables and a second time for syncing the _metabase_metadata table
+ 2
+ (tt/with-temp* [Database [db {:engine :concurrent-sync-test}]]
+   (reset! calls-to-describe-database 0)
+   ;; start a sync processes in the background. It should take 1000 ms to finish
+   (let [f1 (future (sync-database! db))
+         f2 (do
+              ;; wait 200 ms to make sure everything is going
+              (Thread/sleep 200)
+              ;; Start another in the background. Nothing should happen here because the first is already running
+              (future (sync-database! db)))]
+     ;; Start another in the foreground. Again, nothing should happen here because the original should still be running
+     (sync-database! db)
+     ;; make sure both of the futures have finished
+     (deref f1)
+     (deref f2)
+     ;; Check the number of syncs that took place. Should be 2 (just the first)
+     @calls-to-describe-database)))
 
 
-;;; Test that we will remove field-values when they aren't appropriate
+;; Test that we will remove field-values when they aren't appropriate.
+;; Calling `sync-database!` below should cause them to get removed since the Field doesn't have an appropriate special type
 (expect
   [[1 2 3]
-   [1 2 3]]
+   nil]
   (tt/with-temp* [Database [db {:engine :sync-test}]]
     (sync-database! db)
     (let [table-id (db/select-one-id Table, :schema "default", :name "movie")

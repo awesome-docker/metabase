@@ -3,7 +3,7 @@
   (:require [clojure.tools.logging :as log]
             [metabase.models
              [field :refer [Field]]
-             [field-values :as field-values]]
+             [field-values :refer [FieldValues] :as field-values]]
             [metabase.sync
              [interface :as i]
              [util :as sync-util]]
@@ -11,14 +11,26 @@
             [schema.core :as s]
             [toucan.db :as db]))
 
+(s/defn ^:private ^:always-validate clear-field-values-for-field! [field :- i/FieldInstance]
+  (when (db/exists? FieldValues :field_id (u/get-id field))
+    (log/debug (format "Based on type info, %s should no longer have field values.\n" (sync-util/name-for-logging field))
+               (format "(base type: %s, special type: %s, visibility type: %s)\n" (:base_type field) (:special_type field) (:visibility_type field))
+               "Deleting FieldValues...")
+    (db/delete! FieldValues :field_id (u/get-id field))))
+
+(s/defn ^:private ^:always-validate update-field-values-for-field! [field :- i/FieldInstance]
+  (log/debug (u/format-color 'green "Looking into updating FieldValues for %s" (sync-util/name-for-logging field)))
+  (field-values/create-or-update-field-values! field))
+
+
 (s/defn ^:always-validate update-field-values-for-table!
   "Update the cached FieldValues for all Fields (as needed) for TABLE."
   [table :- i/TableInstance]
-  (doseq [field (db/select Field :table_id (u/get-id table), :active true, :visibility_type "normal")
-          :when (field-values/field-should-have-field-values? field)]
+  (doseq [field (db/select Field :table_id (u/get-id table), :active true, :visibility_type "normal")]
     (sync-util/with-error-handling (format "Error updating field values for %s" (sync-util/name-for-logging field))
-      (log/debug (format "Updating field values for %s" (sync-util/name-for-logging field)))
-      (field-values/create-or-update-field-values! field))))
+      (if (field-values/field-should-have-field-values? field)
+        (update-field-values-for-field! field)
+        (clear-field-values-for-field! field)))))
 
 
 (s/defn ^:always-validate update-field-values!

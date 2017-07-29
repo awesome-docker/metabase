@@ -18,7 +18,7 @@
 
 (s/defn ^:always-validate sync-db-metadata!
   [database :- i/DatabaseInstance]
-  (sync-util/sync-operation :database-sync database (format "Sync metadata for %s" (sync-util/name-for-logging database))
+  (sync-util/sync-operation :sync-metadata database (format "Sync metadata for %s" (sync-util/name-for-logging database))
     ;; Make sure the relevant table models are up-to-date
     (sync-tables/sync-tables! database)
     ;; Now for each table, sync the fields

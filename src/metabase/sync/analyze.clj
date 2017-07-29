@@ -28,7 +28,7 @@
    This is dependent on what each database driver supports, but includes things like cardinality testing and table row counting.
    This also updates the `:last_analyzed` value for each affected Field."
   [database :- i/DatabaseInstance]
-  (sync-util/sync-operation :database-analyze database (format "Analyze data for %s" (sync-util/name-for-logging database))
+  (sync-util/sync-operation :analyze database (format "Analyze data for %s" (sync-util/name-for-logging database))
     (table-row-count/update-table-row-counts! database)
     (special-types/infer-special-types! database)
     (doseq [table (sync-util/db->sync-tables database)]

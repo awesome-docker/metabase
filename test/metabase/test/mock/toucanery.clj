@@ -59,20 +59,6 @@
 
 (driver/register-driver! :toucanery (ToucaneryDriver.))
 
-(def ^:private ^:const raw-table-defaults
-  {:schema      nil
-   :database_id true
-   :columns     []
-   :updated_at  true
-   :details     {}
-   :active      true
-   :id          true
-   :created_at  true})
-
-(def ^:const toucanery-raw-tables-and-columns
-  [(merge raw-table-defaults {:name "employees"})
-   (merge raw-table-defaults {:name "transactions"})])
-
 
 (def ^:private ^:const table-defaults
   {:description             nil
@@ -81,7 +67,7 @@
    :points_of_interest      nil
    :show_in_getting_started false
    :schema                  nil
-   :raw_table_id            true
+   :raw_table_id            false
    :fields                  []
    :rows                    nil
    :updated_at              true

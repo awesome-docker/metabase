@@ -42,7 +42,9 @@
   "Return the distinct values of FIELD.
    This is used to create a `FieldValues` object for `:type/Category` Fields."
   ([field]
-   (field-distinct-values field field-values/low-cardinality-threshold))
+   ;; fetch up to one more value than allowed for FieldValues. e.g. if the max is 100 distinct values fetch up to 101.
+   ;; That way we will know if we're over the limit
+   (field-distinct-values field (inc field-values/low-cardinality-threshold)))
   ([field max-results]
    {:pre [(integer? max-results)]}
    (mapv first (field-query field (-> {}
